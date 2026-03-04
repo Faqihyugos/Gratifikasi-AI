@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -76,7 +74,7 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.11.1
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -89,16 +87,32 @@ services:
       init-db:
         condition: service_completed_successfully
     command: >
-      mlflow server
-        --backend-store-uri postgresql://${POSTGRES_USER:-gratifikasi}:${POSTGRES_PASSWORD:-gratifikasi}@db:5432/mlflow
-        --default-artifact-root s3://mlflow/
-        --host 0.0.0.0
-        --port 5000
+      bash -c "
+        pip install --quiet psycopg2-binary &&
+        mlflow server
+          --backend-store-uri postgresql://${POSTGRES_USER:-gratifikasi}:${POSTGRES_PASSWORD:-gratifikasi}@db:5432/mlflow
+          --default-artifact-root s3://mlflow/
+          --host 0.0.0.0
+          --port 5000
+      "
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    command: ["python", "apps/web/manage.py", "migrate", "--run-syncdb"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gratifikasi}:${POSTGRES_PASSWORD:-gratifikasi}@db:5432/${POSTGRES_DB:-gratifikasi}
+      SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   web:
     build:
@@ -118,6 +132,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./apps/web:/app/apps/web
 
@@ -154,6 +170,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   beat:
     build:
@@ -169,6 +187,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   trainer:
     build:

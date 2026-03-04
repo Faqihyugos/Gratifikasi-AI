@@ -5,21 +5,22 @@ Production-ready AI system for automated gratification case classification, buil
 ## Architecture
 
 ```
-┌─────────────┐     HTTP      ┌──────────────────┐
-│  Django Web │ ──────────── ▶│  FastAPI AI Svc  │
-│  (REST API) │               │  /predict        │
-│             │               │  /cases/upsert   │
-└──────┬──────┘               └───────┬──────────┘
-       │ Celery tasks                  │
-       ▼                        ┌──────┴──────┐   ┌──────────┐
-  ┌─────────┐                   │   Qdrant    │   │  MLflow  │
-  │  Redis  │                   │ (vector DB) │   │ Registry │
-  └─────────┘                   └─────────────┘   └──────────┘
-       │
-  ┌────▼────┐   ┌──────────┐
-  │ Celery  │   │Celery    │
-  │ Worker  │   │ Beat     │
-  └─────────┘   └──────────┘
+┌───────────┐   HTTP    ┌─────────────┐   HTTP    ┌──────────────────┐
+│  Web UI   │ ────────▶ │ Django Web  │ ────────▶ │ FastAPI AI Svc   │
+│ (Next.js) │           │ (REST API)  │           │ /predict         │
+└───────────┘           └──────┬──────┘           │ /cases/upsert    │
+                               │ Celery tasks     └────────┬─────────┘
+                               ▼                            │
+                         ┌───────────┐            ┌─────────┴──────┐  ┌──────────┐
+                         │   Redis   │            │    Qdrant      │  │  MLflow  │
+                         └─────┬─────┘            │  (vector DB)   │  │ Registry │
+                               │                  └────────────────┘  └──────────┘
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+              ┌───────────┐        ┌───────────┐
+              │  Celery   │        │  Celery   │
+              │  Worker   │        │   Beat    │
+              └───────────┘        └───────────┘
 ```
 
 ### Services
@@ -34,7 +35,7 @@ Production-ready AI system for automated gratification case classification, buil
 | `db`      | PostgreSQL 16                                   | 5432  |
 | `redis`   | Redis 7                                         | 6379  |
 | `qdrant`  | Qdrant vector store                             | 6333  |
-| `mlflow`  | MLflow tracking + model registry               | 5000  |
+| `mlflow`  | MLflow tracking + model registry               | 5001  |
 | `minio`   | S3-compatible artifact store                    | 9000  |
 | `frontend`| Next.js web UI                                  | 3000  |
 
@@ -82,13 +83,13 @@ docker compose up -d
 ### 3. Run Django migrations
 
 ```bash
-docker compose exec web uv run python apps/web/manage.py migrate --run-syncdb
+docker compose exec web python apps/web/manage.py migrate
 ```
 
 ### 4. Create a superuser (optional)
 
 ```bash
-docker compose exec web uv run python apps/web/manage.py createsuperuser
+docker compose exec web python apps/web/manage.py createsuperuser
 ```
 
 ## API Reference

@@ -1,6 +1,7 @@
 """MLflow utilities for training pipeline."""
 import os
 import logging
+import tempfile
 import mlflow
 import mlflow.transformers
 
@@ -44,8 +45,22 @@ def log_training_run(
             input_example=input_example,
             registered_model_name=MODEL_NAME,
         )
-
         logger.info("Model logged and registered as: %s", MODEL_NAME)
+
+        # Export to ONNX for zero-dependency inference in the AI service
+        try:
+            from optimum.onnxruntime import ORTModelForSequenceClassification
+            with tempfile.TemporaryDirectory() as onnx_dir:
+                logger.info("Exporting model to ONNX: %s", onnx_dir)
+                ort_model = ORTModelForSequenceClassification.from_pretrained(
+                    output_dir, export=True
+                )
+                ort_model.save_pretrained(onnx_dir)
+                tokenizer.save_pretrained(onnx_dir)
+                mlflow.log_artifacts(onnx_dir, artifact_path="onnx_model")
+                logger.info("ONNX model artifact logged to MLflow")
+        except Exception as exc:
+            logger.warning("ONNX export failed (non-fatal): %s", exc)
 
     client = mlflow.tracking.MlflowClient()
     versions = client.search_model_versions(f"name='{MODEL_NAME}'")

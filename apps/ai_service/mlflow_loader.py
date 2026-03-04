@@ -1,10 +1,10 @@
-"""MLflow model loader with fallback."""
+"""MLflow ONNX model loader — uses onnxruntime, no PyTorch required."""
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+import numpy as np
 import mlflow
-import mlflow.transformers
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import torch
+import onnxruntime as ort
+from transformers import AutoTokenizer
 
 from libs.common.logging import get_logger
 
@@ -12,98 +12,96 @@ logger = get_logger(__name__)
 
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 MODEL_URI = os.environ.get("MODEL_URI", "models:/gratifikasi_classifier/Production")
-FALLBACK_MODEL = os.environ.get(
-    "FALLBACK_BASE_MODEL", "indobenchmark/indobert-base-p1"
-)
 LABEL2ID = {"Milik Negara": 0, "Bukan Milik Negara": 1}
 ID2LABEL = {0: "Milik Negara", 1: "Bukan Milik Negara"}
+MAX_LENGTH = int(os.environ.get("MAX_LENGTH", "256"))
 
 
 class ModelLoader:
-    """Loads the classifier model from MLflow registry with fallback."""
+    """Loads the ONNX classifier from MLflow artifact store and runs inference via onnxruntime."""
 
     def __init__(self) -> None:
         self.tokenizer: Optional[Any] = None
-        self.model: Optional[Any] = None
+        self.session: Optional[ort.InferenceSession] = None
         self.model_info: Dict[str, Any] = {}
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._input_names: List[str] = []
+        self.device = "cpu"  # kept for interface compatibility
 
     async def load(self) -> None:
-        """Load model from MLflow or fallback to base model."""
+        """Download the onnx_model artifact from MLflow and initialise onnxruntime session."""
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
         loaded = False
 
         try:
-            logger.info("Loading model from MLflow: %s", MODEL_URI)
-            components = mlflow.transformers.load_model(MODEL_URI, return_type="components")
-            self.tokenizer = components["tokenizer"]
-            self.model = components["model"].to(self.device)
-            self.model.eval()
-
             model_name = MODEL_URI.split("/")[-2] if "models:/" in MODEL_URI else "unknown"
             stage = MODEL_URI.split("/")[-1] if "models:/" in MODEL_URI else "unknown"
 
+            logger.info("Fetching ONNX model from MLflow: %s", MODEL_URI)
+            client = mlflow.tracking.MlflowClient()
+            versions = client.search_model_versions(f"name='{model_name}'")
+            matching = [v for v in versions if v.current_stage == stage]
+            if not matching:
+                raise ValueError(f"No model version at stage '{stage}' for '{model_name}'")
+
+            run_id = sorted(matching, key=lambda v: int(v.version), reverse=True)[0].run_id
+            local_dir = mlflow.artifacts.download_artifacts(
+                run_id=run_id, artifact_path="onnx_model"
+            )
+
+            self.tokenizer = AutoTokenizer.from_pretrained(local_dir)
+            self.session = ort.InferenceSession(
+                f"{local_dir}/model.onnx",
+                providers=["CPUExecutionProvider"],
+            )
+            self._input_names = [inp.name for inp in self.session.get_inputs()]
             self.model_info = {
                 "uri": MODEL_URI,
                 "model_name": model_name,
                 "stage": stage,
-                "source": "mlflow_registry",
+                "source": "mlflow_onnx",
             }
             loaded = True
-            logger.info("Loaded model from MLflow registry: %s", MODEL_URI)
+            logger.info("ONNX model loaded from MLflow: %s", MODEL_URI)
 
         except Exception as exc:
-            logger.warning(
-                "Could not load model from MLflow (%s). Falling back to base model.",
-                exc,
-            )
+            logger.warning("Could not load ONNX model from MLflow (%s). Using fallback.", exc)
 
         if not loaded:
             self._load_fallback()
 
     def _load_fallback(self) -> None:
-        """Load base model as fallback."""
-        logger.warning("Loading fallback model: %s", FALLBACK_MODEL)
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(FALLBACK_MODEL)
-            self.model = AutoModelForSequenceClassification.from_pretrained(
-                FALLBACK_MODEL,
-                num_labels=2,
-                id2label=ID2LABEL,
-                label2id=LABEL2ID,
-            ).to(self.device)
-            self.model.eval()
-            self.model_info = {
-                "uri": FALLBACK_MODEL,
-                "model_name": FALLBACK_MODEL,
-                "stage": "fallback",
-                "source": "local_fallback",
-            }
-            logger.warning("Fallback model loaded. Predictions may be random until trained.")
-        except Exception as exc:
-            logger.error("Failed to load fallback model: %s", exc)
-            self.model_info = {"error": str(exc), "source": "none"}
+        """Mark service as degraded — no ONNX model available yet (pre-training state)."""
+        logger.warning(
+            "No ONNX model available. Classifier will return UNKNOWN until first training run."
+        )
+        self.session = None
+        self.tokenizer = None
+        self.model_info = {"stage": "none", "source": "unavailable"}
 
     def predict(self, text: str) -> Dict[str, Any]:
-        """Run inference and return label + confidence."""
-        if self.model is None or self.tokenizer is None:
+        """Run ONNX inference and return label + confidence."""
+        if self.session is None or self.tokenizer is None:
             return {"label": "UNKNOWN", "confidence": 0.0}
 
         inputs = self.tokenizer(
             text,
-            return_tensors="pt",
+            return_tensors="np",
             truncation=True,
-            max_length=512,
-            padding=True,
+            max_length=MAX_LENGTH,
+            padding="max_length",
         )
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        ort_inputs = {
+            k: v.astype(np.int64)
+            for k, v in inputs.items()
+            if k in self._input_names
+        }
 
-        with torch.no_grad():
-            outputs = self.model(**inputs)
+        logits = self.session.run(None, ort_inputs)[0][0]  # shape (num_labels,)
+        exp_l = np.exp(logits - np.max(logits))
+        probs = exp_l / exp_l.sum()
+        pred_id = int(np.argmax(probs))
 
-        probs = torch.softmax(outputs.logits, dim=-1)[0]
-        pred_idx = probs.argmax().item()
-        label = ID2LABEL.get(pred_idx, "UNKNOWN")
-        confidence = probs[pred_idx].item()
-
-        return {"label": label, "confidence": float(confidence)}
+        return {
+            "label": ID2LABEL.get(pred_id, "UNKNOWN"),
+            "confidence": float(probs[pred_id]),
+        }
