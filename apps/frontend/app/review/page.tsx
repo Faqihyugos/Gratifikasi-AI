@@ -18,7 +18,7 @@ export default function ReviewPage() {
 
   useEffect(() => {
     getRecords({ status: 'WAITING_APPROVAL' })
-      .then((d) => setRecords(d.results))
+      .then((d) => setRecords(d.results ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

@@ -95,7 +95,7 @@ export default function ModelInfoPage() {
               <div>
                 <div className="mb-1 flex justify-between text-sm">
                   <span className="text-gray-600">F1 Score</span>
-                  <span className="font-medium">{(info.f1_score * 100).toFixed(1)}%</span>
+                  <span className="font-medium">{((info.f1_score ?? 0) * 100).toFixed(1)}%</span>
                 </div>
                 <ProgressBar
                   value={info.f1_score * 100}
@@ -106,7 +106,7 @@ export default function ModelInfoPage() {
               <div>
                 <div className="mb-1 flex justify-between text-sm">
                   <span className="text-gray-600">Accuracy</span>
-                  <span className="font-medium">{(info.accuracy * 100).toFixed(1)}%</span>
+                  <span className="font-medium">{((info.accuracy ?? 0) * 100).toFixed(1)}%</span>
                 </div>
                 <ProgressBar
                   value={info.accuracy * 100}

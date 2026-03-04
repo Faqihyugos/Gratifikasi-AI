@@ -16,7 +16,7 @@ export default function MyReportsPage() {
 
   useEffect(() => {
     getRecords({ mine: 1 })
-      .then((d) => setRecords(d.results))
+      .then((d) => setRecords(d.results ?? []))
       .catch(() => setError('Failed to load records.'))
       .finally(() => setLoading(false));
   }, []);

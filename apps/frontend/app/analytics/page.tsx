@@ -70,7 +70,7 @@ export default function AnalyticsPage() {
           <StatCard label="Override Rate" value={`${Math.round(data.override_rate * 100)}%`} />
           <StatCard
             label="Avg. Approval Time"
-            value={`${data.avg_approval_time_hours.toFixed(1)}h`}
+            value={`${(data.avg_approval_time_hours ?? 0).toFixed(1)}h`}
           />
           <StatCard
             label="Milik Negara"

@@ -3,6 +3,7 @@ import logging
 import httpx
 import os
 from django.contrib.auth import get_user_model
+from django.db import models
 from django.db.models import Count, Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -158,40 +159,86 @@ def user_detail(request, pk: int):
 @permission_classes([IsAuthenticated])
 def analytics_view(request):
     """Return aggregate statistics for the dashboard."""
+    from django.utils import timezone
+    from datetime import timedelta
+
     qs = GratifikasiRecord.objects.all()
     total = qs.count()
-    by_status = dict(
-        qs.values_list("status").annotate(n=Count("id")).values_list("status", "n")
+
+    # Label distribution
+    mn_count = qs.filter(final_label="Milik Negara").count()
+    bmn_count = qs.filter(final_label="Bukan Milik Negara").count()
+    labelled = mn_count + bmn_count
+
+    milik_negara_pct = (mn_count / labelled * 100) if labelled else 0
+    bukan_milik_negara_pct = (bmn_count / labelled * 100) if labelled else 0
+
+    # AI source distribution
+    sim_count = qs.filter(ai_source="similarity").count()
+    clf_count = qs.filter(ai_source="classifier").count()
+    sourced = sim_count + clf_count
+    similarity_based_pct = (sim_count / sourced * 100) if sourced else 0
+    classifier_based_pct = (clf_count / sourced * 100) if sourced else 0
+
+    # Override rate: approved with final_label != ai_label
+    approved_qs = qs.filter(status=RecordStatus.APPROVED)
+    approved_count = approved_qs.count()
+    override_count = approved_qs.exclude(final_label=models.F("ai_label")).count()
+    override_rate = (override_count / approved_count) if approved_count else 0
+
+    # Avg approval time (hours): from created_at to updated_at for APPROVED records
+    from django.db.models import ExpressionWrapper, DurationField
+    durations = (
+        approved_qs.annotate(
+            duration=ExpressionWrapper(
+                models.F("updated_at") - models.F("created_at"),
+                output_field=DurationField(),
+            )
+        )
+        .values_list("duration", flat=True)
     )
-    by_label = dict(
-        qs.exclude(final_label=None)
-        .values_list("final_label")
-        .annotate(n=Count("id"))
-        .values_list("final_label", "n")
+    if durations:
+        avg_seconds = sum(d.total_seconds() for d in durations if d) / len(durations)
+        avg_approval_time_hours = round(avg_seconds / 3600, 2)
+    else:
+        avg_approval_time_hours = 0
+
+    # Submissions by month (last 6 months)
+    from django.db.models.functions import TruncMonth
+    monthly = (
+        qs.annotate(month=TruncMonth("created_at"))
+        .values("month")
+        .annotate(count=Count("id"))
+        .order_by("month")
     )
-    by_ai_source = dict(
-        qs.exclude(ai_source=None)
-        .values_list("ai_source")
-        .annotate(n=Count("id"))
-        .values_list("ai_source", "n")
-    )
-    avg_confidence = (
-        qs.exclude(ai_confidence=None)
-        .values_list("ai_confidence", flat=True)
-    )
-    avg_conf_value = (
-        round(sum(avg_confidence) / len(avg_confidence), 4)
-        if avg_confidence
-        else None
-    )
+    submissions_by_month = [
+        {"month": m["month"].strftime("%b %Y"), "count": m["count"]}
+        for m in monthly
+        if m["month"]
+    ]
+
+    # Label distribution list
+    label_distribution = [
+        {"label": "Milik Negara", "count": mn_count},
+        {"label": "Bukan Milik Negara", "count": bmn_count},
+    ]
 
     return Response({
-        "total": total,
-        "by_status": by_status,
-        "by_label": by_label,
-        "by_ai_source": by_ai_source,
-        "avg_ai_confidence": avg_conf_value,
-        "pending_review": by_status.get(RecordStatus.WAITING_APPROVAL, 0),
+        "total_submissions": total,
+        "milik_negara_pct": round(milik_negara_pct, 2),
+        "bukan_milik_negara_pct": round(bukan_milik_negara_pct, 2),
+        "similarity_based_pct": round(similarity_based_pct, 2),
+        "classifier_based_pct": round(classifier_based_pct, 2),
+        "override_rate": round(override_rate, 4),
+        "avg_approval_time_hours": avg_approval_time_hours,
+        "submissions_by_month": submissions_by_month,
+        "label_distribution": label_distribution,
+        "pending_review": qs.filter(status=RecordStatus.WAITING_APPROVAL).count(),
+        "avg_ai_confidence": round(
+            sum(v for v in qs.exclude(ai_confidence=None).values_list("ai_confidence", flat=True)) /
+            max(qs.exclude(ai_confidence=None).count(), 1),
+            4,
+        ),
     })
 
 

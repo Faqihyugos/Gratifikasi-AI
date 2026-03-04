@@ -24,7 +24,7 @@ export default function DashboardPage() {
     async function load() {
       try {
         const data = await getRecords({ page_size: 100 });
-        const records = data.results;
+        const records = data.results ?? [];
         const total = data.count;
         const pending = records.filter((r) => r.status === 'PENDING' || r.status === 'WAITING_APPROVAL').length;
         const approved = records.filter((r) => r.status === 'APPROVED').length;
