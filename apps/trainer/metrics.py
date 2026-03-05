@@ -1,32 +1,16 @@
 """Evaluation metrics for the fine-tuning pipeline."""
 import numpy as np
-import evaluate
-
-accuracy_metric = evaluate.load("accuracy")
-precision_metric = evaluate.load("precision")
-recall_metric = evaluate.load("recall")
-f1_metric = evaluate.load("f1")
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
 def compute_metrics(eval_pred):
-    """Compute accuracy, precision, recall, f1 (macro) for Trainer."""
+    """Compute accuracy, precision, recall, f1 (macro) for Trainer using sklearn."""
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
-    acc = accuracy_metric.compute(predictions=predictions, references=labels)
-    prec = precision_metric.compute(
-        predictions=predictions, references=labels, average="macro", zero_division=0
-    )
-    rec = recall_metric.compute(
-        predictions=predictions, references=labels, average="macro", zero_division=0
-    )
-    f1 = f1_metric.compute(
-        predictions=predictions, references=labels, average="macro"
-    )
-
     return {
-        "accuracy": acc["accuracy"],
-        "precision": prec["precision"],
-        "recall": rec["recall"],
-        "f1": f1["f1"],
+        "accuracy": float(accuracy_score(labels, predictions)),
+        "precision": float(precision_score(labels, predictions, average="macro", zero_division=0)),
+        "recall": float(recall_score(labels, predictions, average="macro", zero_division=0)),
+        "f1": float(f1_score(labels, predictions, average="macro", zero_division=0)),
     }

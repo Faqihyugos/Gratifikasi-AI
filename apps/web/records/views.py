@@ -15,12 +15,21 @@ logger = logging.getLogger(__name__)
 
 class RecordListCreateView(generics.ListCreateAPIView):
     """List all records or submit a new one."""
-    queryset = GratifikasiRecord.objects.all()
     serializer_class = GratifikasiRecordSerializer
     permission_classes = [AllowAny]
 
+    def get_queryset(self):
+        qs = GratifikasiRecord.objects.all()
+        if self.request.query_params.get("mine") and self.request.user.is_authenticated:
+            qs = qs.filter(submitted_by=self.request.user)
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return qs
+
     def perform_create(self, serializer):
-        record = serializer.save(status=RecordStatus.PROCESSING)
+        user = self.request.user if self.request.user.is_authenticated else None
+        record = serializer.save(status=RecordStatus.PROCESSING, submitted_by=user)
         AuditLog.objects.create(
             record=record,
             action="SUBMITTED",

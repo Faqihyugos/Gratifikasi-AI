@@ -75,19 +75,19 @@ export default function ModelInfoPage() {
                 <div>
                   <span className="text-gray-500">Training Date</span>
                   <div className="font-medium text-gray-900">
-                    {new Date(info.training_date).toLocaleDateString()}
+                    {info.training_date ? new Date(info.training_date).toLocaleDateString() : 'N/A'}
                   </div>
                 </div>
                 <div>
                   <span className="text-gray-500">Last Retraining</span>
                   <div className="font-medium text-gray-900">
-                    {new Date(info.last_retraining).toLocaleDateString()}
+                    {info.last_retraining ? new Date(info.last_retraining).toLocaleDateString() : 'N/A'}
                   </div>
                 </div>
                 <div>
                   <span className="text-gray-500">Dataset Size</span>
                   <div className="font-medium text-gray-900">
-                    {info.dataset_size.toLocaleString()} samples
+                    {(info.dataset_size ?? 0).toLocaleString()} samples
                   </div>
                 </div>
               </div>
@@ -98,8 +98,8 @@ export default function ModelInfoPage() {
                   <span className="font-medium">{((info.f1_score ?? 0) * 100).toFixed(1)}%</span>
                 </div>
                 <ProgressBar
-                  value={info.f1_score * 100}
-                  color={info.f1_score >= 0.85 ? 'green' : info.f1_score >= 0.7 ? 'amber' : 'red'}
+                  value={(info.f1_score ?? 0) * 100}
+                  color={(info.f1_score ?? 0) >= 0.85 ? 'green' : (info.f1_score ?? 0) >= 0.7 ? 'amber' : 'red'}
                 />
               </div>
 
@@ -109,8 +109,8 @@ export default function ModelInfoPage() {
                   <span className="font-medium">{((info.accuracy ?? 0) * 100).toFixed(1)}%</span>
                 </div>
                 <ProgressBar
-                  value={info.accuracy * 100}
-                  color={info.accuracy >= 0.85 ? 'green' : info.accuracy >= 0.7 ? 'amber' : 'red'}
+                  value={(info.accuracy ?? 0) * 100}
+                  color={(info.accuracy ?? 0) >= 0.85 ? 'green' : (info.accuracy ?? 0) >= 0.7 ? 'amber' : 'red'}
                 />
               </div>
             </div>

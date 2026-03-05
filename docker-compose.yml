@@ -96,10 +96,11 @@ services:
           --port 5000
       "
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 90s
 
   migrate:
     build:
@@ -155,6 +156,9 @@ services:
     depends_on:
       - qdrant
       - mlflow
+    volumes:
+      - ./apps/ai_service:/app/apps/ai_service
+      - ./libs:/app/libs
 
   worker:
     build:
@@ -172,6 +176,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./libs:/app/libs
 
   beat:
     build:
@@ -202,7 +209,11 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      TRAIN_DATA_PATH: ${TRAIN_DATA_PATH:-}
+      TRAIN_DATA_PATH: ${TRAIN_DATA_PATH:-/app/data/synthetic_training_data.jsonl}
+    volumes:
+      - ./data:/app/data
+      - ./apps/trainer:/app/apps/trainer
+      - ./libs:/app/libs
     depends_on:
       db:
         condition: service_healthy

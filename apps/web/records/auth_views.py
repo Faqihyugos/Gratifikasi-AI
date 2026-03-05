@@ -249,13 +249,33 @@ def analytics_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def model_info_view(request):
-    """Proxy to AI service /model endpoint."""
+    """Proxy to AI service /model endpoint, normalised to match frontend ModelInfo shape."""
+    EMPTY: dict = {
+        "model_version": "N/A",
+        "training_date": None,
+        "f1_score": 0.0,
+        "accuracy": 0.0,
+        "dataset_size": 0,
+        "last_retraining": None,
+        "status": "not_trained",
+    }
     try:
         resp = httpx.get(f"{AI_SERVICE_URL}/model", timeout=5.0)
-        return Response(resp.json(), status=resp.status_code)
+        raw = resp.json()
+        # Normalise: fill in missing keys so frontend never receives undefined
+        result = {
+            "model_version": raw.get("model_name") or raw.get("uri") or "N/A",
+            "training_date": raw.get("training_date"),
+            "f1_score": raw.get("eval_f1") or raw.get("f1_score") or 0.0,
+            "accuracy": raw.get("eval_accuracy") or raw.get("accuracy") or 0.0,
+            "dataset_size": raw.get("dataset_size") or 0,
+            "last_retraining": raw.get("last_retraining") or raw.get("training_date"),
+            "status": raw.get("stage") or raw.get("source") or "unknown",
+        }
+        return Response(result)
     except Exception as exc:
         logger.warning("AI service unavailable: %s", exc)
-        return Response({"detail": "AI service unavailable."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(EMPTY)
 
 
 @api_view(["POST"])

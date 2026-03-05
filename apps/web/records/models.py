@@ -25,6 +25,10 @@ class GratifikasiRecord(models.Model):
     value_estimation = models.DecimalField(
         max_digits=15, decimal_places=2, null=True, blank=True
     )
+    relationship = models.CharField(max_length=50, null=True, blank=True)
+    context = models.CharField(max_length=50, null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
+    regulatory_framework = models.CharField(max_length=200, null=True, blank=True)
     status = models.CharField(
         max_length=30, choices=RecordStatus.choices, default=RecordStatus.PENDING
     )
@@ -33,7 +37,15 @@ class GratifikasiRecord(models.Model):
     ai_source = models.CharField(
         max_length=20, choices=AiSource.choices, null=True, blank=True
     )
+    ai_result_json = models.JSONField(null=True, blank=True)
     final_label = models.CharField(max_length=50, null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_records",
+    )
     approved_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

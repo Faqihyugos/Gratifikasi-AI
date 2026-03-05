@@ -44,6 +44,7 @@ def run_ai_task(self, record_id: int) -> None:
         source = data.get("source", "unknown")
         valid_sources = [choice[0] for choice in AiSource.choices]
         record.ai_source = source if source in valid_sources else AiSource.UNKNOWN
+        record.ai_result_json = data  # store full AI response for frontend
         record.status = RecordStatus.WAITING_APPROVAL
         record.save()
 

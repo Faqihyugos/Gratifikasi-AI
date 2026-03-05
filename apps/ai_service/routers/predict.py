@@ -1,5 +1,5 @@
 """Prediction endpoint."""
-from typing import List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from ..inference import run_inference
@@ -13,12 +13,22 @@ class PredictRequest(BaseModel):
     similarity_threshold: float = Field(0.85, ge=0.0, le=1.0)
 
 
+class SimilarCaseOut(BaseModel):
+    id: Any
+    similarity_score: float
+    final_label: str
+    preview: str
+
+
 class PredictResponse(BaseModel):
     label: str
     confidence: float
     source: str
-    similar_case_ids: List[str]
+    similar_cases: List[SimilarCaseOut]
     model_version: str
+    model_run_id: str
+    timestamp: str
+    probabilities: Dict[str, float]
 
 
 @router.post("/predict", response_model=PredictResponse)

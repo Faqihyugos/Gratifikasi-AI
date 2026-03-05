@@ -46,9 +46,9 @@ class QdrantWrapper:
         self, vector: List[float], top_k: int = 5
     ) -> List[Dict[str, Any]]:
         """Search for similar vectors."""
-        results = await self.client.search(
+        response = await self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=vector,
+            query=vector,
             limit=top_k,
             with_payload=True,
         )
@@ -58,7 +58,7 @@ class QdrantWrapper:
                 "score": r.score,
                 "payload": r.payload or {},
             }
-            for r in results
+            for r in response.points
         ]
 
     async def upsert(

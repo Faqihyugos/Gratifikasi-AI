@@ -54,11 +54,30 @@ class ModelLoader:
                 providers=["CPUExecutionProvider"],
             )
             self._input_names = [inp.name for inp in self.session.get_inputs()]
+
+            # Enrich model_info with run metrics for the model-info page
+            run = client.get_run(run_id)
+            m = run.data.metrics
+            p = run.data.params
+            training_date = (
+                run.info.start_time / 1000
+                if run.info.start_time else None
+            )
+            import datetime as _dt
+            training_date_str = (
+                _dt.datetime.utcfromtimestamp(training_date).isoformat()
+                if training_date else None
+            )
             self.model_info = {
                 "uri": MODEL_URI,
                 "model_name": model_name,
                 "stage": stage,
                 "source": "mlflow_onnx",
+                "run_id": run_id,
+                "eval_f1": m.get("eval_f1", 0.0),
+                "eval_accuracy": m.get("eval_accuracy", 0.0),
+                "dataset_size": int(p.get("train_size", 0)) + int(p.get("eval_size", 0)),
+                "training_date": training_date_str,
             }
             loaded = True
             logger.info("ONNX model loaded from MLflow: %s", MODEL_URI)
@@ -100,8 +119,10 @@ class ModelLoader:
         exp_l = np.exp(logits - np.max(logits))
         probs = exp_l / exp_l.sum()
         pred_id = int(np.argmax(probs))
+        probabilities = {ID2LABEL[i]: float(probs[i]) for i in range(len(probs))}
 
         return {
             "label": ID2LABEL.get(pred_id, "UNKNOWN"),
             "confidence": float(probs[pred_id]),
+            "probabilities": probabilities,
         }

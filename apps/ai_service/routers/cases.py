@@ -28,6 +28,7 @@ async def upsert_case(request: Request, body: UpsertRequest):
     payload = {
         "record_id": body.record_id,
         "final_label": body.final_label,
+        "preview": body.text[:200],
         "value_estimation": body.value_estimation,
         "created_at": body.created_at,
     }

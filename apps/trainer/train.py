@@ -81,7 +81,7 @@ def main() -> None:
 
     dataset = Dataset.from_dict({"text": texts, "label": labels})
     split = dataset.train_test_split(
-        test_size=VAL_SPLIT, seed=SEED, stratify_by_column="label"
+        test_size=VAL_SPLIT, seed=SEED
     )
     train_dataset = split["train"]
     eval_dataset = split["test"]
@@ -118,7 +118,7 @@ def main() -> None:
         per_device_eval_batch_size=BATCH_SIZE,
         learning_rate=LEARNING_RATE,
         warmup_ratio=WARMUP_RATIO,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="f1",
@@ -145,6 +145,12 @@ def main() -> None:
 
     eval_results = trainer.evaluate()
     logger.info("Evaluation results: %s", eval_results)
+
+    # Save best model (loaded by load_best_model_at_end) to OUTPUT_DIR root
+    # so ONNX export in mlflow_utils can find config.json / model files
+    logger.info("Saving best model to %s", OUTPUT_DIR)
+    trainer.save_model(OUTPUT_DIR)
+    tokenizer.save_pretrained(OUTPUT_DIR)
 
     setup_mlflow(MLFLOW_TRACKING_URI)
 
